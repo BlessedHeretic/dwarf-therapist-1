@@ -169,21 +169,13 @@ void Dwarf::refresh_data() {
     }
     */
 
-    /*
-    QVector<uint> souls = m_df->enumerate_vector(m_address + mem->dwarf_offset("souls"));
-    foreach(uint soul, souls) {
-        //LOGD << "SOUL FOUND AT" << hex << soul << m_df->pprint(m_df->get_data(soul, 0x500), 0);
-        QVector<uint> skills = m_df->enumerate_vector(soul + mem->dwarf_offset("skills"));
-        //LOGD << nice_name() << "Soul contains" << skills.size() << "skills";
-        m_skills = read_skills(soul + mem->dwarf_offset("skills"));
-        read_traits(soul + mem->dwarf_offset("traits"));
+    foreach(uint soul, m_df->enumerate_vector(m_address +
+                                              mem->dwarf_offset("souls"))) {
+        m_skills = read_skills(soul + mem->soul_detail("skills"));
+        read_traits(soul + mem->soul_detail("traits"));
         TRACE << "\tTRAITS:" << m_traits.size();
     }
     */
-
-    //ushort position = m_df->read_ushort(m_address + mem->dwarf_offset("position"));
-    //LOGD << nice_name() << "POSITION:" << position;
-
     TRACE << "finished refresh of dwarf data for dwarf:" << m_nice_name
             << "(" << m_translated_name << ")";
 }
@@ -549,8 +541,8 @@ void Dwarf::read_current_job(const VIRTADDR &addr) {
     VIRTADDR current_job_addr = m_df->read_dword(addr);
 
     if (current_job_addr != 0) {
-        m_current_job_id = m_df->read_word(current_job_addr +
-                           m_df->memory_layout()->offset("current_job_id"));
+        m_current_job_id = m_df->read_ushort(current_job_addr +
+                                     m_df->memory_layout()->job_detail("id"));
         DwarfJob *job = GameDataReader::ptr()->get_job(m_current_job_id);
         if (job)
             m_current_job = job->description;
@@ -561,7 +553,7 @@ void Dwarf::read_current_job(const VIRTADDR &addr) {
         MemoryLayout* layout = m_df->memory_layout();
         uint states_addr = m_address + layout->dwarf_offset("states");
         QVector<uint> entries = m_df->enumerate_vector(states_addr);
-        short on_break_value = layout->job_flag("on_break");
+        short on_break_value = layout->job_detail("on_break_flag");
         foreach(uint entry, entries) {
             if (m_df->read_short(entry) == on_break_value) {
                 is_on_break = true;
@@ -594,8 +586,6 @@ void Dwarf::read_labors(const uint &addr) {
     // get the list of identified labors from game_data.ini
     GameDataReader *gdr = GameDataReader::ptr();
     foreach(Labor *l, gdr->get_ordered_labors()) {
-        if (l->is_weapon && l->labor_id < 0) // unarmed
-            continue;
         bool enabled = buf.at(l->labor_id) > 0;
         m_labors[l->labor_id] = enabled;
         m_pending_labors[l->labor_id] = enabled;
@@ -608,20 +598,7 @@ void Dwarf::read_labors(const uint &addr) {
 }
 
 bool Dwarf::labor_enabled(int labor_id) {
-    if (labor_id < 0) {// unarmed
-        bool uses_weapon = false;
-        foreach(Labor *l, GameDataReader::ptr()->get_ordered_labors()) {
-            if (l->is_weapon && l->labor_id > 0) {
-                if (m_pending_labors[l->labor_id]) {
-                    uses_weapon = true;
-                    break;
-                }
-            }
-        }
-        return !uses_weapon;
-    } else {
-        return m_pending_labors.value(labor_id, false);
-    }
+    return m_pending_labors.value(labor_id, false);
 }
 
 bool Dwarf::is_labor_state_dirty(int labor_id) {
@@ -650,7 +627,7 @@ void Dwarf::set_labor(int labor_id, bool enabled) {
         return;
     }
 
-    if (!m_can_set_labors && !DT->labor_cheats_allowed() && !l->is_weapon) {
+    if (!m_can_set_labors && !DT->labor_cheats_allowed()) {
         LOGD << "IGNORING SET LABOR OF ID:" << labor_id << "TO:" << enabled << "FOR:" << m_nice_name << "PROF_ID" << m_raw_profession
              << "PROF_NAME:" << profession() << "CUSTOM:" << m_pending_custom_profession;
         return;
@@ -660,12 +637,6 @@ void Dwarf::set_labor(int labor_id, bool enabled) {
         foreach(int excluded, l->get_excluded_labors()) {
             LOGD << "LABOR" << labor_id << "excludes" << excluded;
             m_pending_labors[excluded] = false;
-        }
-    }
-    if (enabled && l->is_weapon) { // weapon type labors are automatically exclusive
-        foreach(Labor *l, GameDataReader::ptr()->get_ordered_labors()) {
-            if (l && l->is_weapon)
-                m_pending_labors[l->labor_id] = false;
         }
     }
     m_pending_labors[labor_id] = enabled;
@@ -711,6 +682,11 @@ void Dwarf::commit_pending() {
     if (m_pending_custom_profession != m_custom_profession)
         m_df->write_string(m_address + mem->dwarf_offset("custom_profession"), m_pending_custom_profession);
     refresh_data();
+}
+
+void Dwarf::set_nickname(const QString &nick) {
+    m_pending_nick_name = nick;
+    calc_names();
 }
 
 void Dwarf::set_custom_profession_text(const QString &prof_text) {
@@ -886,6 +862,17 @@ int Dwarf::total_skill_levels() {
     int ret_val = 0;
     foreach(Skill s, m_skills) {
         ret_val += s.rating();
+    }
+    return ret_val;
+}
+
+int Dwarf::total_assigned_labors() {
+    // get the list of identified labors from game_data.ini
+    int ret_val = 0;
+    GameDataReader *gdr = GameDataReader::ptr();
+    foreach(Labor *l, gdr->get_ordered_labors()) {
+        if (m_labors[l->labor_id] > 0)
+            ret_val++;
     }
     return ret_val;
 }

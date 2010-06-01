@@ -97,7 +97,11 @@ public:
     //! return this dwarf's highest skill
     Skill highest_skill();
 
+    //! sum total of all skill levels in any skill
     Q_INVOKABLE int total_skill_levels();
+
+    //! number of activated labors
+    Q_INVOKABLE int total_assigned_labors();
 
     //! return the sum total of all xp this dwarf has earned
     int total_xp() {return m_total_xp;}
@@ -160,7 +164,7 @@ public:
     void refresh_data();
 
     //! set the pending nickname for this dwarf (does not auto-commit)
-    void set_nickname(QString nick) {m_pending_nick_name = nick; calc_names();}
+    Q_INVOKABLE void set_nickname(const QString &nick);
 
     //! set the migration wave this dwarf (DwarfModel currently calls this with its best guess)
     void set_migration_wave(const int &wave_number) {m_migration_wave = wave_number;}
